@@ -1,14 +1,64 @@
 import os
-from typing import List
+from datetime import timedelta
 
-class Settings:
-    """إعدادات التطبيق"""
+class Config:
+    """إعدادات آمنة مع حماية المعلومات الحساسة"""
     
-    def __init__(self):
-        self.ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5000").split(",")
-        self.REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-        self.MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/quantum_trade")
-        self.EXCHANGE_API_KEY = os.getenv("EXCHANGE_API_KEY")
-        self.EXCHANGE_SECRET = os.getenv("EXCHANGE_SECRET")
-        self.AI_MODEL_PATH = os.getenv("AI_MODEL_PATH", "./ai_models")
-        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    # === إعدادات الأمان ===
+    SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key-change-in-production')
+    DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+    
+    # === إعدادات قاعدة البيانات ===
+    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///trading.db')
+    
+    # === إعدادات منصات التداول ===
+    EXCHANGE_CONFIGS = {
+        'binance': {
+            'api_key': os.getenv('BINANCE_API_KEY', ''),
+            'api_secret': os.getenv('BINANCE_API_SECRET', ''),
+            'testnet': os.getenv('BINANCE_TESTNET', 'True').lower() == 'true'
+        },
+        'bybit': {
+            'api_key': os.getenv('BYBIT_API_KEY', ''),
+            'api_secret': os.getenv('BYBIT_API_SECRET', ''),
+            'testnet': os.getenv('BYBIT_TESTNET', 'True').lower() == 'true'
+        }
+        # يمكن إضافة منصات أخرى هنا
+    }
+    
+    # === إعدادات إدارة المخاطر ===
+    RISK_CONFIG = {
+        'max_position_size': float(os.getenv('MAX_POSITION_SIZE', '1000')),
+        'daily_loss_limit': float(os.getenv('DAILY_LOSS_LIMIT', '500')),
+        'max_leverage': int(os.getenv('MAX_LEVERAGE', '10')),
+        'auto_risk_management': os.getenv('AUTO_RISK_MANAGEMENT', 'True').lower() == 'true'
+    }
+    
+    # === إعدادات الذكاء الاصطناعي ===
+    AI_CONFIG = {
+        'model_path': os.getenv('AI_MODEL_PATH', 'models/trading_model.h5'),
+        'confidence_threshold': float(os.getenv('AI_CONFIDENCE_THRESHOLD', '0.7')),
+        'retrain_interval': int(os.getenv('AI_RETRAIN_INTERVAL', '24'))
+    }
+    
+    # === إعدادات الأداء ===
+    PERFORMANCE_CONFIG = {
+        'cache_timeout': int(os.getenv('CACHE_TIMEOUT', '300')),
+        'max_workers': int(os.getenv('MAX_WORKERS', '5')),
+        'request_timeout': int(os.getenv('REQUEST_TIMEOUT', '30'))
+    }
+
+def validate_config():
+    """التحقق من صحة الإعدادات"""
+    required_vars = ['SECRET_KEY']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        print(f"⚠️  تحذير: المتغيرات التالية مفقودة: {missing_vars}")
+        print("يرجى تعيينها في ملف .env")
+    
+    return len(missing_vars) == 0
+
+# التحقق من الإعدادات عند الاستيراد
+if __name__ == "__main__":
+    validate_config()

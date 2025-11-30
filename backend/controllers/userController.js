@@ -1,46 +1,61 @@
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
+const BotCreatorService = require('../services/botCreator');
 
-// تحديث بيانات المستخدم
-exports.updateProfile = async (req, res) => {
+// تحديث بيانات المستخدم بإضافة API Keys
+const updateUserApiKeys = async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const userId = req.user.id;
+    const { platform, apiKey, secretKey } = req.body;
     
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { name, email },
-      { new: true, runValidators: true }
-    ).select('-password');
-
-    res.json({ message: 'تم تحديث الملف الشخصي بنجاح', user });
+    const user = await User.findById(userId);
+    const userPlan = user.subscriptionPlan;
+    const planSettings = BotCreatorService.getTradingSettings(userPlan);
+    
+    // التحقق من الصلاحيات حسب الخطة
+    if (!planSettings.allowedExchanges.includes(platform)) {
+      return res.status(403).json({
+        message: `خطة ${userPlan} لا تدعم منصة ${platform}`
+      });
+    }
+    
+    // تحديث المفاتيح
+    user.apiKeys[platform] = { apiKey, secretKey };
+    await user.save();
+    
+    res.json({ message: 'تم تحديث المفاتيح بنجاح' });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'خطأ في الخادم' });
+    res.status(500).json({ message: error.message });
   }
 };
 
-// تغيير كلمة السر
-exports.changePassword = async (req, res) => {
+// تفعيل البوت بعد الدفع
+const activateUserBot = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: 'كلمة السر الحالية والجديدة مطلوبتان' });
-    }
-
-    const user = await User.findById(req.user.id);
+    const userId = req.user.id;
+    const user = await User.findById(userId);
     
-    const isPasswordCorrect = await bcrypt.compare(currentPassword, user.password);
-    if (!isPasswordCorrect) {
-      return res.status(400).json({ message: 'كلمة السر الحالية غير صحيحة' });
+    if (user.paymentStatus !== 'completed') {
+      return res.status(400).json({ message: 'يجب إكمال عملية الدفع أولاً' });
     }
-
-    user.password = await bcrypt.hash(newPassword, 12);
+    
+    // إنشاء البوت التلقائي
+    const botData = await BotCreatorService.createUserBot(userId, user);
+    
+    // حفظ بيانات البوت في المستخدم
+    user.tradingBotUrl = botData.botUrl;
+    user.telegramBotToken = botData.botToken;
+    user.createdBots.push({
+      botName: `${user.username}_trading_bot`,
+      botUrl: botData.botUrl
+    });
+    
     await user.save();
-
-    res.json({ message: 'تم تغيير كلمة السر بنجاح' });
+    
+    res.json({
+      message: 'تم إنشاء بوت التداول بنجاح',
+      botUrl: botData.botUrl,
+      botConfig: botData.botConfig
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'خطأ في الخادم' });
+    res.status(500).json({ message: error.message });
   }
 };

@@ -26,6 +26,9 @@ const adminSecurityRoutes = require('./routes/admin/security');
 const telegramWebhookRoutes = require('./routes/webhooks/telegram');
 const exchangesWebhookRoutes = require('./routes/webhooks/exchanges');
 
+// 🆕 مسارات البوت التداولي المتقدمة
+const botRoutes = require('./routes/bot');
+
 class QATraderBackend {
     constructor() {
         this.app = express();
@@ -202,6 +205,13 @@ class QATraderBackend {
                 retryAfter: '5 دقائق'
             }),
 
+            // 🆕 البوت التداولي
+            bot: createLimiter(1 * 60 * 1000, 120, {
+                error: 'طلبات بوت كثيرة',
+                code: 'BOT_RATE_LIMIT',
+                retryAfter: '1 دقيقة'
+            }),
+
             // الويب هووكس
             webhook: createLimiter(1 * 60 * 1000, 100, {
                 error: 'طلبات ويب هووك كثيرة',
@@ -215,6 +225,7 @@ class QATraderBackend {
         this.app.use('/api/auth/', limiters.auth);
         this.app.use('/api/trading/', limiters.trading);
         this.app.use('/api/payment/', limiters.payment);
+        this.app.use('/api/bot/', limiters.bot);
         this.app.use('/webhooks/', limiters.webhook);
     }
 
@@ -482,7 +493,7 @@ class QATraderBackend {
     }
 
     isSecurityRelevantRequest(req) {
-        const securityPaths = ['/auth', '/payment', '/admin', '/webhooks', '/api/key'];
+        const securityPaths = ['/auth', '/payment', '/admin', '/webhooks', '/api/key', '/api/bot'];
         return securityPaths.some(path => req.url.includes(path));
     }
 
@@ -587,6 +598,9 @@ class QATraderBackend {
         this.app.use('/api/support', supportRoutes);
         this.app.use('/api/client', clientRoutes);
         this.app.use('/api/payment', paymentRoutes);
+        
+        // 🆕 مسارات البوت التداولي المتقدمة
+        this.app.use('/api/bot', botRoutes);
         
         // مسارات الإدارة المتقدمة
         this.app.use('/admin/security', adminSecurityRoutes);
@@ -896,7 +910,7 @@ class QATraderBackend {
         return `
 
         
-🚀  QUANTUM AI TRADER BACKEND - الإصدار 2.0.0
+🚀  QUANTUM AI TRADER BACKEND - الإصدار 2.1.0
 
 📍  المنفذ: ${this.port}
 🌍  البيئة: ${this.env}
@@ -907,6 +921,7 @@ class QATraderBackend {
 ✅  الأنظمة المتقدمة المفعلة:
    🔒  نظام مكافحة الهندسة العكسية الكمي ${reverseEngineeringStatus}
    🛡️  مراقبة الأمان في الوقت الحقيقي ${securityStatus}
+   🤖  نظام البوت التداولي المتقدم (مفعل)
    📊  مراقبة الأداء والتسجيل المتقدم
    🌍  تكوين CORS آمن وديناميكي
    ⚡  ضغط وتحميل متقدم

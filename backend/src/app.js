@@ -1,4 +1,4 @@
-// backend/src/app.js - النسخة المتقدمة والمؤمنة
+// backend/src/app.js - النسخة المتقدمة والمؤمنة مع تكامل WebSocket
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -15,6 +15,9 @@ require('dotenv').config();
 const AntiReverseEngineering = require('./security/antiReverseEngineering');
 const CyberSecurityMonitor = require('./security/cyberSecurityMonitor');
 const EncryptionService = require('./services/EncryptionService');
+
+// 🆕 تكامل WebSocket المتقدم
+const WebSocketIntegration = require('./services/websocket');
 
 // مسارات API
 const paymentRoutes = require('./routes/payment');
@@ -37,6 +40,9 @@ class QATraderBackend {
         this.securityMonitor = new CyberSecurityMonitor();
         this.antiReverse = new AntiReverseEngineering();
         this.encryptionService = new EncryptionService();
+        
+        // 🆕 تهيئة WebSocket Integration
+        this.webSocketIntegration = null;
         
         this.initializeAdvancedSystems();
         this.setupSecurityInfrastructure();
@@ -573,7 +579,13 @@ class QATraderBackend {
                     monitoring: this.securityMonitor.isActive(),
                     reverseEngineering: this.antiReverse.isActive(),
                     lastIncident: this.securityMonitor.getLastIncidentTime()
-                }
+                },
+                // 🆕 إضافة إحصائيات WebSocket
+                websocket: this.webSocketIntegration ? {
+                    active: true,
+                    connections: this.webSocketIntegration.getStats()?.totalConnections || 0,
+                    botsConnected: this.webSocketIntegration.getStats()?.activeBots || 0
+                } : { active: false }
             };
 
             res.status(200).json(healthCheck);
@@ -590,6 +602,18 @@ class QATraderBackend {
             }
 
             res.status(200).json(this.getAdvancedMetrics());
+        });
+
+        // 🆕 مسار إحصائيات WebSocket
+        this.app.get('/websocket-stats', (req, res) => {
+            if (this.webSocketIntegration) {
+                res.json(this.webSocketIntegration.getStats());
+            } else {
+                res.status(503).json({ 
+                    error: 'WebSocket service not available',
+                    active: false
+                });
+            }
         });
 
         // 🛣️ مسارات API مع الإصدار والتوثيق
@@ -680,7 +704,9 @@ class QATraderBackend {
                 responseTimes: this.securityMonitor.getResponseTimeStats(),
                 memoryTrend: this.securityMonitor.getMemoryTrend(),
                 activeConnections: this.securityMonitor.getActiveConnections()
-            }
+            },
+            // 🆕 إضافة إحصائيات WebSocket
+            websocket: this.webSocketIntegration ? this.webSocketIntegration.getStats() : { active: false }
         };
     }
 
@@ -899,6 +925,10 @@ class QATraderBackend {
             console.log(this.getQuantumStartupBanner());
         });
 
+        // 🆕 بدء تكامل WebSocket بعد بدء الخادم
+        this.webSocketIntegration = new WebSocketIntegration(this.server);
+        console.log('🔗 تم تهيئة تكامل WebSocket المتقدم');
+
         this.setupGracefulShutdown();
     }
 
@@ -906,6 +936,7 @@ class QATraderBackend {
         const dbStatus = mongoose.connection.readyState === 1 ? '🟢 متصل' : '🔴 غير متصل';
         const securityStatus = this.securityMonitor.isActive() ? '🟢 نشط' : '🔴 غير نشط';
         const reverseEngineeringStatus = this.antiReverse.isActive() ? '🟢 نشط' : '🔴 غير نشط';
+        const websocketStatus = this.webSocketIntegration ? '🟢 نشط' : '🔴 غير نشط';
 
         return `
 
@@ -922,6 +953,7 @@ class QATraderBackend {
    🔒  نظام مكافحة الهندسة العكسية الكمي ${reverseEngineeringStatus}
    🛡️  مراقبة الأمان في الوقت الحقيقي ${securityStatus}
    🤖  نظام البوت التداولي المتقدم (مفعل)
+   🔗  نظام WebSocket المتقدم ${websocketStatus}
    📊  مراقبة الأداء والتسجيل المتقدم
    🌍  تكوين CORS آمن وديناميكي
    ⚡  ضغط وتحميل متقدم
@@ -934,6 +966,8 @@ class QATraderBackend {
 💾  الذاكرة: ${Math.round(os.totalmem() / 1024 / 1024 / 1024)}GB
 
 📍  العنوان: http://localhost:${this.port}
+🔗  WebSocket: ws://localhost:${this.port}
+📊  إحصائيات WebSocket: http://localhost:${this.port}/websocket-stats
 📚  التوثيق: https://docs.akraa.com/api/v2
 🆘  الدعم: support@akraa.com
 🔐  الأمان: security@akraa.com
@@ -953,6 +987,12 @@ class QATraderBackend {
                 uptime: process.uptime(),
                 environment: this.env
             });
+
+            // 🆕 إغلاق اتصالات WebSocket أولاً
+            if (this.webSocketIntegration) {
+                console.log('🔌 إغلاق اتصالات WebSocket...');
+                this.webSocketIntegration.closeAllConnections();
+            }
 
             // إغلاق خادم HTTP
             this.server.close((err) => {

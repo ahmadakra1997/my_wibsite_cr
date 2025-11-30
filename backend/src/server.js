@@ -20,6 +20,9 @@ const orderRoutes = require('../routes/orders');
 const userRoutes = require('../routes/users');
 const uploadRoutes = require('../routes/upload');
 
+// ⭐ الإضافة الجديدة: مسارات نظام البوت
+const botRoutes = require('../routes/botRoutes');
+
 // ⭐ الأنظمة المتقدمة - مع معالجة الأخطاء
 let CyberSecurityMonitor, AntiReverseEngineering, EncryptionService;
 let securitySystemsAvailable = false;
@@ -128,11 +131,13 @@ class QuantumTradeServer {
             pid: process.pid,
             pythonIntegration: process.env.ENABLE_PYTHON_INTEGRATION === 'true',
             securitySystems: securitySystemsAvailable,
-            advancedRoutes: advancedRoutesAvailable
+            advancedRoutes: advancedRoutesAvailable,
+            botSystem: true // ⭐ الإضافة الجديدة
         });
 
         console.log('🔧 بدء تهيئة الأنظمة الأساسية...');
         console.log(`🐍 تكامل Python: ${process.env.ENABLE_PYTHON_INTEGRATION === 'true' ? 'مفعل' : 'معطل'}`);
+        console.log('🤖 نظام البوت: 🟢 مفعل'); // ⭐ الإضافة الجديدة
     }
 
     createDirectoryStructure() {
@@ -142,6 +147,7 @@ class QuantumTradeServer {
             './logs/performance', 
             './logs/errors',
             './logs/websocket',
+            './logs/bot', // ⭐ الإضافة الجديدة
             './uploads',
             './temp',
             './backups'
@@ -255,6 +261,18 @@ class QuantumTradeServer {
                     code: 'WEBSOCKET_RATE_LIMIT',
                     retryAfter: '1 دقيقة'
                 }
+            }),
+
+            // ⭐ الإضافة الجديدة: تحديد معدل لمسارات البوت
+            bot: rateLimit({
+                windowMs: 10 * 60 * 1000,
+                max: 30,
+                message: {
+                    error: 'طلبات بوت كثيرة',
+                    code: 'BOT_RATE_LIMIT',
+                    retryAfter: '10 دقائق'
+                },
+                skipSuccessfulRequests: false
             })
         };
 
@@ -264,6 +282,7 @@ class QuantumTradeServer {
         this.app.use('/api/trading/', limiters.api);
         this.app.use('/api/payment/', limiters.payment);
         this.app.use('/ws/', limiters.websocket);
+        this.app.use('/api/bot/', limiters.bot); // ⭐ الإضافة الجديدة
     }
 
     getCorsConfig() {
@@ -293,12 +312,14 @@ class QuantumTradeServer {
                 'X-Client-Version',
                 'X-Device-ID',
                 'X-Session-ID',
-                'X-CSRF-Token'
+                'X-CSRF-Token',
+                'X-Bot-Token' // ⭐ الإضافة الجديدة
             ],
             exposedHeaders: [
                 'X-RateLimit-Limit',
                 'X-RateLimit-Remaining',
-                'X-RateLimit-Reset'
+                'X-RateLimit-Reset',
+                'X-Bot-Status' // ⭐ الإضافة الجديدة
             ],
             maxAge: 86400,
             preflightContinue: false,
@@ -318,6 +339,11 @@ class QuantumTradeServer {
         res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
         res.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
         res.header('X-Runtime', 'Node.js');
+
+        // ⭐ الإضافة الجديدة: رؤوس خاصة بالبوت
+        if (req.path.includes('/bot')) {
+            res.header('X-Bot-System', 'active');
+        }
 
         // إزالة الرؤوس الخطرة
         res.removeHeader('X-Powered-By');
@@ -428,7 +454,8 @@ class QuantumTradeServer {
         const logFormats = {
             combined: ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms',
             security: ':date[iso] :method :url :status :res[content-length] :response-time ms :remote-addr :user-agent',
-            websocket: ':date[iso] :client-id :event-type :message'
+            websocket: ':date[iso] :client-id :event-type :message',
+            bot: ':date[iso] :method :url :status :response-time ms :remote-addr :user-agent' // ⭐ الإضافة الجديدة
         };
 
         // سجل الوصول العام
@@ -453,6 +480,17 @@ class QuantumTradeServer {
             skip: (req) => !this.isSecurityRelevant(req)
         }));
 
+        // ⭐ الإضافة الجديدة: سجل البوت
+        const botLogStream = fs.createWriteStream(
+            path.join(__dirname, '../../logs/bot/bot.log'), 
+            { flags: 'a' }
+        );
+
+        this.app.use(morgan(logFormats.bot, { 
+            stream: botLogStream,
+            skip: (req) => !req.url.includes('/bot')
+        }));
+
         // تسجيل المطور
         if (this.env !== 'production') {
             this.app.use(morgan('dev'));
@@ -460,7 +498,7 @@ class QuantumTradeServer {
     }
 
     isSecurityRelevant(req) {
-        const securityPaths = ['/auth', '/payment', '/admin', '/api/key', '/ws/'];
+        const securityPaths = ['/auth', '/payment', '/admin', '/api/key', '/ws/', '/api/bot/']; // ⭐ تحديث
         return securityPaths.some(path => req.url.includes(path));
     }
 
@@ -474,6 +512,17 @@ class QuantumTradeServer {
             // تسجيل الأداء للطلبات البطيئة
             if (responseTime > 1000) { // أكثر من 1 ثانية
                 this.securityMonitor.logPerformanceIssue({
+                    requestId: req.requestId,
+                    url: req.url,
+                    method: req.method,
+                    responseTime,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            // ⭐ الإضافة الجديدة: تسجيل أداء البوت
+            if (req.url.includes('/bot') && responseTime > 500) {
+                this.securityMonitor.logSecurityEvent('BOT_PERFORMANCE_ISSUE', {
                     requestId: req.requestId,
                     url: req.url,
                     method: req.method,
@@ -622,7 +671,8 @@ class QuantumTradeServer {
                 ws: clientWs,
                 ip: clientIP,
                 connectedAt: new Date(),
-                lastActivity: new Date()
+                lastActivity: new Date(),
+                type: 'trading' // ⭐ الإضافة الجديدة
             });
 
             // تسجيل اتصال العميل
@@ -630,7 +680,8 @@ class QuantumTradeServer {
                 clientId,
                 ip: clientIP,
                 userAgent: request.headers['user-agent'],
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                type: 'trading'
             });
 
             // محاولة الاتصال بخادم Python WebSocket (إذا كان مفعلاً)
@@ -674,13 +725,17 @@ class QuantumTradeServer {
                 services: {
                     trading: process.env.ENABLE_PYTHON_INTEGRATION === 'true',
                     live_data: true,
-                    websocket: true
+                    websocket: true,
+                    bot_system: true // ⭐ الإضافة الجديدة
                 }
             });
 
             // بدء مراقبة النشاط
             this.startClientActivityMonitoring(clientId);
         });
+
+        // ⭐ الإضافة الجديدة: WebSocket للبوت
+        this.setupBotWebSocket();
 
         // محاولة الاتصال بخادم Python WebSocket عند البدء (إذا كان مفعلاً)
         if (process.env.ENABLE_PYTHON_INTEGRATION === 'true') {
@@ -690,6 +745,169 @@ class QuantumTradeServer {
         }
 
         console.log('✅ تم تهيئة جسر WebSocket');
+    }
+
+    // ⭐ الإضافة الجديدة: WebSocket للبوت
+    setupBotWebSocket() {
+        this.botWebSocket = new WebSocket.Server({ 
+            server: this.server,
+            path: '/ws/bot',
+            perMessageDeflate: false,
+            clientTracking: true
+        });
+
+        console.log('🤖 بدء جسر WebSocket للبوت...');
+
+        this.botWebSocket.on('connection', (clientWs, request) => {
+            const clientId = this.generateClientId();
+            const clientIP = request.socket.remoteAddress;
+            
+            console.log(`🔗 عميل بوت متصل WebSocket: ${clientId} من ${clientIP}`);
+
+            // تخزين معلومات عميل البوت
+            this.connectedClients.set(clientId, {
+                ws: clientWs,
+                ip: clientIP,
+                connectedAt: new Date(),
+                lastActivity: new Date(),
+                type: 'bot' // ⭐ تمييز نوع البوت
+            });
+
+            // تسجيل اتصال عميل البوت
+            this.securityMonitor.logSecurityEvent('BOT_WEBSOCKET_CONNECTED', {
+                clientId,
+                ip: clientIP,
+                userAgent: request.headers['user-agent'],
+                timestamp: new Date().toISOString()
+            });
+
+            clientWs.on('message', (message) => {
+                try {
+                    const parsedMessage = JSON.parse(message);
+                    this.handleBotWebSocketMessage(clientWs, parsedMessage, clientId);
+                    
+                    // تحديث آخر نشاط
+                    const clientInfo = this.connectedClients.get(clientId);
+                    if (clientInfo) {
+                        clientInfo.lastActivity = new Date();
+                    }
+                } catch (error) {
+                    console.error('❌ خطأ في معالجة رسالة بوت WebSocket:', error);
+                    this.logWebSocketError(clientId, 'BOT_MESSAGE_PARSING_ERROR', error.message);
+                }
+            });
+
+            clientWs.on('close', (code, reason) => {
+                console.log(`🔌 عميل بوت مقطوع WebSocket: ${clientId} (${code})`);
+                this.cleanupClientConnection(clientId, code, reason);
+            });
+
+            clientWs.on('error', (error) => {
+                console.error(`❌ خطأ WebSocket للعميل البوت ${clientId}:`, error);
+                this.logWebSocketError(clientId, 'BOT_CLIENT_ERROR', error.message);
+                this.cleanupClientConnection(clientId, 1006, 'Bot client error');
+            });
+
+            // إرسال رسالة ترحيب للبوت
+            this.sendToClient(clientId, {
+                type: 'bot_connection_established',
+                clientId,
+                timestamp: new Date().toISOString(),
+                message: 'تم الاتصال بنجاح بخادم البوت',
+                services: {
+                    bot_management: true,
+                    realtime_updates: true,
+                    trading_signals: true
+                }
+            });
+
+            // بدء مراقبة نشاط البوت
+            this.startClientActivityMonitoring(clientId);
+        });
+    }
+
+    // ⭐ الإضافة الجديدة: معالجة رسائل بوت WebSocket
+    handleBotWebSocketMessage(clientWs, message, clientId) {
+        const { type, data } = message;
+
+        // تسجيل رسائل البوت للأمان
+        this.securityMonitor.logSecurityEvent('BOT_WEBSOCKET_MESSAGE', {
+            clientId,
+            type,
+            data,
+            timestamp: new Date().toISOString()
+        });
+
+        switch (type) {
+            case 'bot_status':
+                this.handleBotStatusRequest(clientId, data);
+                break;
+            case 'bot_control':
+                this.handleBotControlRequest(clientId, data);
+                break;
+            case 'ping':
+                this.sendToClient(clientId, { 
+                    type: 'pong', 
+                    timestamp: new Date().toISOString(),
+                    service: 'bot'
+                });
+                break;
+            default:
+                this.sendToClient(clientId, {
+                    type: 'error',
+                    message: 'نوع رسالة البوت غير معروف',
+                    originalType: type,
+                    timestamp: new Date().toISOString()
+                });
+        }
+    }
+
+    // ⭐ الإضافة الجديدة: معالجة طلب حالة البوت
+    handleBotStatusRequest(clientId, data) {
+        // محاكاة استجابة حالة البوت
+        const botStatus = {
+            type: 'bot_status_response',
+            botId: data.botId,
+            status: 'active',
+            performance: {
+                totalTrades: 45,
+                successfulTrades: 38,
+                totalProfit: 1250.50,
+                successRate: 84.4
+            },
+            configuration: {
+                strategy: 'day_trading',
+                riskLevel: 'medium',
+                exchanges: ['binance', 'bybit']
+            },
+            timestamp: new Date().toISOString()
+        };
+
+        this.sendToClient(clientId, botStatus);
+    }
+
+    // ⭐ الإضافة الجديدة: معالجة طلب تحكم البوت
+    handleBotControlRequest(clientId, data) {
+        const { action, botId } = data;
+        
+        this.securityMonitor.logSecurityEvent('BOT_CONTROL_ACTION', {
+            clientId,
+            action,
+            botId,
+            timestamp: new Date().toISOString()
+        });
+
+        // محاكاة استجابة تحكم البوت
+        const response = {
+            type: 'bot_control_response',
+            action,
+            botId,
+            status: 'success',
+            message: `تم ${action} البوت بنجاح`,
+            timestamp: new Date().toISOString()
+        };
+
+        this.sendToClient(clientId, response);
     }
 
     // ⭐ الإضافة الجديدة: الاتصال بخادم Python WebSocket
@@ -872,8 +1090,12 @@ class QuantumTradeServer {
                     type: 'stats',
                     connectedClients: this.connectedClients.size,
                     pythonConnected: this.pythonWebSocket && this.pythonWebSocket.readyState === WebSocket.OPEN,
+                    botSystem: true, // ⭐ الإضافة الجديدة
                     timestamp: new Date().toISOString()
                 });
+                break;
+            case 'get_bot_status': // ⭐ الإضافة الجديدة
+                this.handleBotStatusRequest(clientId, data);
                 break;
             default:
                 this.sendToClient(clientId, {
@@ -900,6 +1122,17 @@ class QuantumTradeServer {
                 }));
             }
 
+            // تسجيل حدث انفصال العميل
+            const eventType = clientInfo.type === 'bot' ? 'BOT_WEBSOCKET_DISCONNECTED' : 'WEBSOCKET_CLIENT_DISCONNECTED';
+            
+            this.securityMonitor.logSecurityEvent(eventType, {
+                clientId,
+                code,
+                reason,
+                duration: new Date() - clientInfo.connectedAt,
+                timestamp: new Date().toISOString()
+            });
+
             // إغلاق اتصال WebSocket
             if (clientInfo.ws.readyState === WebSocket.OPEN) {
                 clientInfo.ws.close(code, reason);
@@ -908,15 +1141,7 @@ class QuantumTradeServer {
             // إزالة العميل من القائمة
             this.connectedClients.delete(clientId);
 
-            this.securityMonitor.logSecurityEvent('WEBSOCKET_CLIENT_DISCONNECTED', {
-                clientId,
-                code,
-                reason,
-                duration: new Date() - clientInfo.connectedAt,
-                timestamp: new Date().toISOString()
-            });
-
-            console.log(`🧹 تم تنظيف اتصال العميل: ${clientId}`);
+            console.log(`🧹 تم تنظيف اتصال العميل: ${clientId} (${clientInfo.type})`);
         }
     }
 
@@ -954,8 +1179,9 @@ class QuantumTradeServer {
             timestamp: new Date().toISOString()
         };
 
+        const logFile = errorType.includes('BOT') ? 'bot_errors.log' : 'errors.log';
         const websocketLogStream = fs.createWriteStream(
-            path.join(__dirname, '../../logs/websocket/errors.log'), 
+            path.join(__dirname, '../../logs/websocket/', logFile), 
             { flags: 'a' }
         );
 
@@ -990,7 +1216,8 @@ class QuantumTradeServer {
                 },
                 websocket: {
                     connectedClients: this.connectedClients.size,
-                    pythonConnected: this.pythonWebSocket && this.pythonWebSocket.readyState === WebSocket.OPEN
+                    pythonConnected: this.pythonWebSocket && this.pythonWebSocket.readyState === WebSocket.OPEN,
+                    botConnections: Array.from(this.connectedClients.values()).filter(client => client.type === 'bot').length // ⭐ الإضافة الجديدة
                 },
                 security: {
                     monitoring: this.securityMonitor.isActive(),
@@ -999,7 +1226,8 @@ class QuantumTradeServer {
                 },
                 routes: {
                     advancedAvailable: advancedRoutesAvailable,
-                    basicAvailable: true
+                    basicAvailable: true,
+                    botSystem: true // ⭐ الإضافة الجديدة
                 }
             };
 
@@ -1017,6 +1245,10 @@ class QuantumTradeServer {
         this.app.use('/api/orders', orderRoutes);
         this.app.use('/api/users', userRoutes);
         this.app.use('/api/upload', uploadRoutes);
+
+        // ⭐ الإضافة الجديدة: مسارات نظام البوت
+        this.app.use('/api/bot', botRoutes);
+        console.log('✅ تم تحميل مسارات نظام البوت');
 
         // 🎯 مسارات API المتقدمة (إذا كانت متوفرة)
         if (advancedRoutesAvailable) {
@@ -1039,9 +1271,13 @@ class QuantumTradeServer {
                     websocket: true,
                     advanced_security: securitySystemsAvailable,
                     advanced_routes: advancedRoutesAvailable,
-                    basic_routes: true
+                    basic_routes: true,
+                    bot_system: true // ⭐ الإضافة الجديدة
                 },
-                documentation: 'https://docs.yourdomain.com'
+                documentation: 'https://docs.yourdomain.com',
+                api_endpoints: {
+                    bot: '/api/bot/*' // ⭐ الإضافة الجديدة
+                }
             });
         });
 
@@ -1066,6 +1302,7 @@ class QuantumTradeServer {
                     '/api/orders/*',
                     '/api/users/*',
                     '/api/upload/*',
+                    '/api/bot/*', // ⭐ الإضافة الجديدة
                     '/health',
                     '/metrics'
                 ].concat(advancedRoutesAvailable ? [
@@ -1080,6 +1317,8 @@ class QuantumTradeServer {
     }
 
     getSystemMetrics() {
+        const botClients = Array.from(this.connectedClients.values()).filter(client => client.type === 'bot');
+        
         return {
             timestamp: new Date().toISOString(),
             process: {
@@ -1105,9 +1344,12 @@ class QuantumTradeServer {
             },
             websocket: {
                 connectedClients: this.connectedClients.size,
+                tradingClients: Array.from(this.connectedClients.values()).filter(client => client.type === 'trading').length,
+                botClients: botClients.length, // ⭐ الإضافة الجديدة
                 clientDetails: Array.from(this.connectedClients.entries()).map(([id, info]) => ({
                     id,
                     ip: info.ip,
+                    type: info.type, // ⭐ الإضافة الجديدة
                     connectedAt: info.connectedAt,
                     lastActivity: info.lastActivity
                 }))
@@ -1115,7 +1357,8 @@ class QuantumTradeServer {
             features: {
                 securitySystems: securitySystemsAvailable,
                 advancedRoutes: advancedRoutesAvailable,
-                pythonIntegration: process.env.ENABLE_PYTHON_INTEGRATION === 'true'
+                pythonIntegration: process.env.ENABLE_PYTHON_INTEGRATION === 'true',
+                botSystem: true // ⭐ الإضافة الجديدة
             }
         };
     }
@@ -1137,7 +1380,8 @@ class QuantumTradeServer {
                 method: req.method,
                 ip: req.ip,
                 userAgent: req.get('User-Agent'),
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                isBotRequest: req.url.includes('/bot') // ⭐ الإضافة الجديدة
             });
 
             // حفظ الخطأ في السجل
@@ -1201,12 +1445,14 @@ class QuantumTradeServer {
                 url: req.url,
                 ip: req.ip,
                 userAgent: req.get('User-Agent'),
-                headers: req.headers
+                headers: req.headers,
+                isBotRequest: req.url.includes('/bot') // ⭐ الإضافة الجديدة
             }
         };
 
+        const logFile = req.url.includes('/bot') ? 'bot_errors.log' : 'errors.log';
         const errorLogStream = fs.createWriteStream(
-            path.join(__dirname, '../../logs/errors/errors.log'), 
+            path.join(__dirname, '../../logs/errors/', logFile), 
             { flags: 'a' }
         );
 
@@ -1229,8 +1475,10 @@ class QuantumTradeServer {
 
         // مراقبة اتصالات WebSocket
         setInterval(() => {
+            const botClients = Array.from(this.connectedClients.values()).filter(client => client.type === 'bot');
             const websocketStats = {
                 connectedClients: this.connectedClients.size,
+                botClients: botClients.length, // ⭐ الإضافة الجديدة
                 pythonConnected: this.pythonWebSocket && this.pythonWebSocket.readyState === WebSocket.OPEN,
                 timestamp: new Date().toISOString()
             };
@@ -1238,6 +1486,15 @@ class QuantumTradeServer {
             if (websocketStats.connectedClients > 100) {
                 this.securityMonitor.logPerformanceIssue({
                     type: 'HIGH_WEBSOCKET_CONNECTIONS',
+                    stats: websocketStats,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            // ⭐ الإضافة الجديدة: مراقبة أداء البوت
+            if (botClients.length > 50) {
+                this.securityMonitor.logPerformanceIssue({
+                    type: 'HIGH_BOT_CONNECTIONS',
                     stats: websocketStats,
                     timestamp: new Date().toISOString()
                 });
@@ -1257,6 +1514,9 @@ class QuantumTradeServer {
         const pythonStatus = process.env.ENABLE_PYTHON_INTEGRATION === 'true' ? '🟢 مفعل' : '🔴 معطل';
         const securityStatus = securitySystemsAvailable ? '🟢 متقدم' : '🟡 أساسي';
         const routesStatus = advancedRoutesAvailable ? '🟢 متقدمة' : '🟡 أساسية';
+        const botStatus = '🟢 مفعل';
+
+        const botClients = Array.from(this.connectedClients.values()).filter(client => client.type === 'bot').length;
 
         return `
         
@@ -1266,6 +1526,7 @@ class QuantumTradeServer {
 🐍 تكامل Python: ${pythonStatus}
 🔒 الأمان: ${securityStatus}  
 🛣️ المسارات: ${routesStatus}
+🤖 نظام البوت: ${botStatus}
 🌍 البيئة: ${this.env}
 ⚡ Node.js: ${process.version}
 📦 PID: ${process.pid}
@@ -1273,20 +1534,23 @@ class QuantumTradeServer {
 ✅ الأنظمة المفعلة:
    🔒 ${securitySystemsAvailable ? 'مراقبة الأمان المتقدمة' : 'مراقبة الأمان الأساسية'}
    🔌 خادم WebSocket للبيانات الحية
+   🤖 نظام البوت التلقائي المتكامل
    📊 مراقبة الأداء والتسجيل المتقدم
    🗄️  قاعدة البيانات: ${mongoose.connection.readyState === 1 ? '🟢 متصل' : '🔴 غير متصل'}
 
 🔗 اتصالات الخدمة:
    📡 Node.js API: http://localhost:${this.port}
    ${process.env.ENABLE_PYTHON_INTEGRATION === 'true' ? `🤖 Python Trading: http://localhost:${this.pythonPort}` : ''}
-   🔌 WebSocket: ws://localhost:${this.port}/ws/trading
+   🔌 WebSocket Trading: ws://localhost:${this.port}/ws/trading
+   🔌 WebSocket Bot: ws://localhost:${this.port}/ws/bot
 
 🎯 المسارات المتاحة:
-   • /api/auth/* → إدارة المستخدمين (الجديدة)
-   • /api/products/* → إدارة المنتجات (الجديدة)
-   • /api/orders/* → إدارة الطلبات (الجديدة) 
-   • /api/users/* → إدارة الملفات (الجديدة)
-   • /api/upload/* → رفع الملفات (الجديدة)
+   • /api/auth/* → إدارة المستخدمين
+   • /api/products/* → إدارة المنتجات
+   • /api/orders/* → إدارة الطلبات
+   • /api/users/* → إدارة الملفات
+   • /api/upload/* → رفع الملفات
+   • /api/bot/* → نظام البوت التلقائي ⭐
    ${advancedRoutesAvailable ? `
    • /api/v1/auth/* → إدارة المستخدمين (المتقدمة)
    • /api/v1/client/* → إدارة العملاء (المتقدمة)
@@ -1302,7 +1566,14 @@ class QuantumTradeServer {
 
 🔌 حالة WebSocket:
    • العملاء المتصلين: ${this.connectedClients.size}
+   • عملاء البوت: ${botClients}
    • اتصال Python: ${this.pythonWebSocket && this.pythonWebSocket.readyState === WebSocket.OPEN ? '🟢 نشط' : '🔴 غير متصل'}
+
+🤖 نظام البوت:
+   • الحالة: 🟢 نشط
+   • المسارات: /api/bot/activate, /api/bot/status, /api/bot/control
+   • WebSocket: ws://localhost:${this.port}/ws/bot
+   • الوثائق: /api/bot/docs
 
 ==================================================
         `;
@@ -1319,7 +1590,9 @@ class QuantumTradeServer {
             });
 
             // إغلاق جميع اتصالات العملاء
-            console.log(`👋 إغلاق اتصالات ${this.connectedClients.size} عميل...`);
+            const botClients = Array.from(this.connectedClients.values()).filter(client => client.type === 'bot').length;
+            console.log(`👋 إغلاق اتصالات ${this.connectedClients.size} عميل (${botClients} بوت)...`);
+            
             this.connectedClients.forEach((clientInfo, clientId) => {
                 this.cleanupClientConnection(clientId, 1001, 'Server shutdown');
             });
@@ -1327,7 +1600,12 @@ class QuantumTradeServer {
             // إغلاق اتصالات WebSocket
             if (this.tradingWebSocket) {
                 this.tradingWebSocket.close();
-                console.log('✅ تم إغلاق خادم WebSocket.');
+                console.log('✅ تم إغلاق خادم WebSocket للتداول.');
+            }
+
+            if (this.botWebSocket) {
+                this.botWebSocket.close();
+                console.log('✅ تم إغلاق خادم WebSocket للبوت.');
             }
 
             if (this.pythonWebSocket) {

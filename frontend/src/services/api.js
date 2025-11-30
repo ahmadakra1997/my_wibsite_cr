@@ -1,257 +1,310 @@
 /**
- * التطبيق الرئيسي المتقدم - الإصدار 3.0
- * واجهة مستخدم محسنة مع أداء فائق وتجربة مستخدم استثنائية
+ * خدمات API المتقدمة - الإصدار 3.0
+ * نظام متكامل للاتصال بالخادم مع إدارة متقدمة للأخطاء والأمان
  */
 
-import React, { Suspense, lazy, useEffect, useMemo } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Provider } from 'react-redux';
-import { I18nextProvider } from 'react-i18next';
-import { ErrorBoundary } from 'react-error-boundary';
+// 🔧 دوال الأمان والمساعدة
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    'X-Client-Version': '3.0.0',
+    'X-Request-ID': `frontend_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  };
+};
 
-// Redux Store
-import store from './store/store';
-
-// إعدادات i18n للمترجم
-import i18n from './i18n';
-
-// خدمات الأداء والأمان
-import PerformanceMonitor from './services/PerformanceMonitor';
-import SecurityService from './services/SecurityService';
-import ErrorTrackingService from './services/ErrorTrackingService';
-
-// المكونات الأساسية
-import LoadingSpinner from './components/common/LoadingSpinner';
-import ErrorFallback from './components/common/ErrorFallback';
-import AppHeader from './components/layout/AppHeader';
-import AppFooter from './components/layout/AppFooter';
-import MaintenanceMode from './components/common/MaintenanceMode';
-
-// تحميل كسول للمكونات الثقيلة
-const Dashboard = lazy(() => import('./components/dashboard/Dashboard'));
-const TradingInterface = lazy(() => import('./components/trading/TradingInterface'));
-const Analytics = lazy(() => import('./components/analytics/Analytics'));
-const RiskManagement = lazy(() => import('./components/risk/RiskManagement'));
-const Settings = lazy(() => import('./components/settings/Settings'));
-const AuthModal = lazy(() => import('./components/auth/AuthModal'));
-
-// 🆕 المكونات الجديدة للبوت
-const BotActivation = lazy(() => import('./components/bot/BotActivation'));
-const BotStatus = lazy(() => import('./components/bot/BotStatus'));
-
-// مدير أداء التطبيق
-const performanceMonitor = new PerformanceMonitor();
-const securityService = new SecurityService();
-const errorTracker = new ErrorTrackingService();
-
-/**
- * المكون الرئيسي للتطبيق مع التحسينات المتقدمة
- */
-function App() {
-  // تأثيرات التهيئة
-  useEffect(() => {
-    // تهيئة خدمات المراقبة
-    initializeMonitoringServices();
+const handleResponse = async (response) => {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ 
+      error: 'خطأ في الشبكة أو الخادم',
+      code: 'NETWORK_ERROR'
+    }));
     
-    // إعداد مستمعات الأخطاء
-    setupErrorHandlers();
-    
-    // التحقق من صحة الجلسة
-    validateUserSession();
-    
-    // تنظيف عند إلغاء التثبيت
-    return () => {
-      cleanupServices();
-    };
-  }, []);
-
-  /**
-   * تهيئة خدمات المراقبة والأداء
-   */
-  const initializeMonitoringServices = () => {
-    try {
-      // بدء مراقبة الأداء
-      performanceMonitor.startMonitoring();
-      
-      // تهيئة تتبع الأخطاء
-      errorTracker.initialize();
-      
-      // التحقق من إعدادات الأمان
-      securityService.initializeSecurityChecks();
-      
-      console.log('✅ تم تهيئة خدمات المراقبة بنجاح');
-    } catch (error) {
-      console.error('❌ خطأ في تهيئة خدمات المراقبة:', error);
-      errorTracker.captureException(error);
-    }
-  };
-
-  /**
-   * إعداد معالجة الأخطاء
-   */
-  const setupErrorHandlers = () => {
-    // معالجة أخطاء غير متوقعة
-    window.addEventListener('unhandledrejection', (event) => {
-      errorTracker.captureException(event.reason);
-      console.error('خطأ غير معالج:', event.reason);
-    });
-
-    // معالجة أخطاء الأحداث
-    window.addEventListener('error', (event) => {
-      errorTracker.captureException(event.error);
-    });
-  };
-
-  /**
-   * التحقق من صحة جلسة المستخدم
-   */
-  const validateUserSession = async () => {
-    try {
-      const isValid = await securityService.validateSession();
-      if (!isValid) {
-        console.warn('⚠️ جلسة المستخدم غير صالحة');
-        // إعادة التوجيه للصفحة الرئيسية أو تسجيل الدخول
-      }
-    } catch (error) {
-      console.error('❌ خطأ في التحقق من الجلسة:', error);
-    }
-  };
-
-  /**
-   * تنظيف الخدمات عند إلغاء التثبيت
-   */
-  const cleanupServices = () => {
-    performanceMonitor.stopMonitoring();
-    securityService.cleanup();
-  };
-
-  /**
-   * معالج الأخطاء العالمي
-   */
-  const handleGlobalError = (error, errorInfo) => {
-    console.error('🔥 خطأ عام في التطبيق:', error);
-    errorTracker.captureException(error, { extra: errorInfo });
-    
-    // يمكن إضافة إخطار للمستخدم هنا
-    // showNotification('error', 'حدث خطأ غير متوقع. يرجى تحديث الصفحة.');
-  };
-
-  /**
-   * معالج استعادة التطبيق بعد الخطأ
-   */
-  const handleErrorReset = () => {
-    window.location.reload();
-  };
-
-  // حالة الصيانة (يمكن التحكم فيها عبر البيئة)
-  const isMaintenanceMode = process.env.REACT_APP_MAINTENANCE_MODE === 'true';
-
-  // 🆕 تحميل المكونات المخبأة للاستخدام مع إضافة المكونات الجديدة
-  const memoizedRoutes = useMemo(() => (
-    <Routes>
-      {/* المسار الافتراضي */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      
-      {/* المسارات الرئيسية */}
-      <Route path="/dashboard" element={
-        <Suspense fallback={<LoadingSpinner type="dashboard" />}>
-          <Dashboard />
-        </Suspense>
-      } />
-      
-      <Route path="/trading" element={
-        <Suspense fallback={<LoadingSpinner type="trading" />}>
-          <TradingInterface />
-        </Suspense>
-      } />
-      
-      <Route path="/analytics" element={
-        <Suspense fallback={<LoadingSpinner type="analytics" />}>
-          <Analytics />
-        </Suspense>
-      } />
-      
-      <Route path="/risk" element={
-        <Suspense fallback={<LoadingSpinner type="risk" />}>
-          <RiskManagement />
-        </Suspense>
-      } />
-      
-      <Route path="/settings" element={
-        <Suspense fallback={<LoadingSpinner type="settings" />}>
-          <Settings />
-        </Suspense>
-      } />
-      
-      {/* 🆕 المسارات الجديدة لإدارة البوت */}
-      <Route path="/bot/activation" element={
-        <Suspense fallback={<LoadingSpinner type="bot" />}>
-          <BotActivation />
-        </Suspense>
-      } />
-      
-      <Route path="/bot/status" element={
-        <Suspense fallback={<LoadingSpinner type="bot" />}>
-          <BotStatus />
-        </Suspense>
-      } />
-      
-      {/* مسار التعامل مع الصفحات غير الموجودة */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
-  ), []);
-
-  // إذا كان في وضع الصيانة
-  if (isMaintenanceMode) {
-    return (
-      <div className="app-maintenance">
-        <MaintenanceMode />
-      </div>
-    );
+    throw new Error(errorData.error || `خطأ ${response.status}: ${response.statusText}`);
   }
+  return response.json();
+};
 
-  return (
-    <ErrorBoundary
-      FallbackComponent={ErrorFallback}
-      onError={handleGlobalError}
-      onReset={handleErrorReset}
-    >
-      <Provider store={store}>
-        <I18nextProvider i18n={i18n}>
-          <Router>
-            <div className="app-container" data-testid="app-container">
-              {/* رأس التطبيق */}
-              <AppHeader />
-              
-              {/* المحتوى الرئيسي */}
-              <main className="app-main-content">
-                {memoizedRoutes}
-              </main>
-              
-              {/* 🆕 إضافة المكونات الجديدة للبوت في لوحة التحكم */}
-              <div className="bot-management-section">
-                <Suspense fallback={<LoadingSpinner type="bot" />}>
-                  <div className="bot-components-grid">
-                    <BotActivation />
-                    <BotStatus />
-                  </div>
-                </Suspense>
-              </div>
-              
-              {/* نافذة المصادقة (تظهر عند الحاجة) */}
-              <Suspense fallback={<div />}>
-                <AuthModal />
-              </Suspense>
-              
-              {/* تذييل التطبيق */}
-              <AppFooter />
-            </div>
-          </Router>
-        </I18nextProvider>
-      </Provider>
-    </ErrorBoundary>
-  );
-}
+const apiRequest = (url, options = {}) => {
+  return fetch(url, {
+    headers: getAuthHeaders(),
+    ...options
+  }).then(handleResponse);
+};
 
-// تحسينات الأداء الإضافية
-export default React.memo(App);
+// 🏦 خدمات الدفع الحالية (محفوظة)
+export const paymentAPI = {
+  processPayment: (paymentData) => 
+    apiRequest('/api/payment/process', {
+      method: 'POST',
+      body: JSON.stringify(paymentData)
+    }),
+
+  getPaymentHistory: () => 
+    apiRequest('/api/payment/history'),
+
+  getBalance: () => 
+    apiRequest('/api/payment/balance'),
+
+  withdrawFunds: (withdrawalData) => 
+    apiRequest('/api/payment/withdraw', {
+      method: 'POST',
+      body: JSON.stringify(withdrawalData)
+    })
+};
+
+// 🔐 خدمات المصادقة الحالية (محفوظة)
+export const authAPI = {
+  login: (credentials) => 
+    apiRequest('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials)
+    }),
+
+  register: (userData) => 
+    apiRequest('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData)
+    }),
+
+  logout: () => 
+    apiRequest('/api/auth/logout', {
+      method: 'POST'
+    }),
+
+  refreshToken: () => 
+    apiRequest('/api/auth/refresh-token', {
+      method: 'POST'
+    }),
+
+  getProfile: () => 
+    apiRequest('/api/auth/profile')
+};
+
+// 📈 خدمات التداول الحالية (محفوظة)
+export const tradingAPI = {
+  getMarketData: (symbol = 'BTC/USD') => 
+    apiRequest(`/api/trading/market?symbol=${encodeURIComponent(symbol)}`),
+
+  placeOrder: (orderData) => 
+    apiRequest('/api/trading/order', {
+      method: 'POST',
+      body: JSON.stringify(orderData)
+    }),
+
+  cancelOrder: (orderId) => 
+    apiRequest(`/api/trading/order/${orderId}`, {
+      method: 'DELETE'
+    }),
+
+  getOpenOrders: () => 
+    apiRequest('/api/trading/orders/open'),
+
+  getOrderHistory: (limit = 50) => 
+    apiRequest(`/api/trading/orders/history?limit=${limit}`)
+};
+
+// 📊 خدمات التحليلات الحالية (محفوظة)
+export const analyticsAPI = {
+  getPortfolioAnalytics: () => 
+    apiRequest('/api/analytics/portfolio'),
+
+  getPerformanceMetrics: (period = '1m') => 
+    apiRequest(`/api/analytics/performance?period=${period}`),
+
+  getRiskAssessment: () => 
+    apiRequest('/api/analytics/risk'),
+
+  getTradingInsights: () => 
+    apiRequest('/api/analytics/insights')
+};
+
+// ⚙️ خدمات الإعدادات الحالية (محفوظة)
+export const settingsAPI = {
+  getUserSettings: () => 
+    apiRequest('/api/settings/user'),
+
+  updateUserSettings: (settings) => 
+    apiRequest('/api/settings/user', {
+      method: 'PUT',
+      body: JSON.stringify(settings)
+    }),
+
+  getNotificationSettings: () => 
+    apiRequest('/api/settings/notifications'),
+
+  updateNotificationSettings: (settings) => 
+    apiRequest('/api/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(settings)
+    })
+};
+
+// 🆕 خدمات البوت التداولي المتقدمة (المضافة)
+export const botAPI = {
+  // تفعيل/إيقاف البوت
+  activateBot: () => 
+    apiRequest('/api/bot/activate', {
+      method: 'POST'
+    }),
+
+  deactivateBot: () => 
+    apiRequest('/api/bot/deactivate', {
+      method: 'POST'
+    }),
+
+  getBotStatus: () => 
+    apiRequest('/api/bot/status'),
+
+  // أداء البوت
+  getPerformanceMetrics: (timeframe = '24h') => 
+    apiRequest(`/api/bot/performance?timeframe=${timeframe}`),
+
+  getTradingHistory: () => 
+    apiRequest('/api/bot/history'),
+
+  getTradingAnalytics: (timeframe = '24h') => 
+    apiRequest(`/api/bot/analytics?timeframe=${timeframe}`),
+
+  // إعدادات البوت
+  getBotSettings: () => 
+    apiRequest('/api/bot/settings'),
+
+  updateBotSettings: (settings) => 
+    apiRequest('/api/bot/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings)
+    }),
+
+  resetBotSettings: () => 
+    apiRequest('/api/bot/settings/reset', {
+      method: 'POST'
+    }),
+
+  testBotConnection: () => 
+    apiRequest('/api/bot/test-connection'),
+
+  // بيانات إضافية
+  getTradingPairs: () => 
+    apiRequest('/api/bot/pairs'),
+
+  getTradingStrategies: () => 
+    apiRequest('/api/bot/strategies')
+};
+
+// 🔄 دوال مختصرة للاستخدام السهل (تشمل جميع الخدمات)
+export const {
+  // البوت
+  activateBot,
+  deactivateBot,
+  getBotStatus,
+  getPerformanceMetrics: getBotPerformanceMetrics,
+  getTradingHistory: getBotTradingHistory,
+  getTradingAnalytics: getBotTradingAnalytics,
+  getBotSettings,
+  updateBotSettings,
+  resetBotSettings,
+  testBotConnection,
+  getTradingPairs,
+  getTradingStrategies
+} = botAPI;
+
+export const {
+  // الدفع
+  processPayment,
+  getPaymentHistory,
+  getBalance,
+  withdrawFunds
+} = paymentAPI;
+
+export const {
+  // المصادقة
+  login,
+  register,
+  logout,
+  refreshToken,
+  getProfile
+} = authAPI;
+
+export const {
+  // التداول
+  getMarketData,
+  placeOrder,
+  cancelOrder,
+  getOpenOrders,
+  getOrderHistory
+} = tradingAPI;
+
+export const {
+  // التحليلات
+  getPortfolioAnalytics,
+  getPerformanceMetrics,
+  getRiskAssessment,
+  getTradingInsights
+} = analyticsAPI;
+
+export const {
+  // الإعدادات
+  getUserSettings,
+  updateUserSettings,
+  getNotificationSettings,
+  updateNotificationSettings
+} = settingsAPI;
+
+// 🎯 تصدير عام لجميع الخدمات
+export default {
+  // المجموعات
+  payment: paymentAPI,
+  auth: authAPI,
+  trading: tradingAPI,
+  analytics: analyticsAPI,
+  settings: settingsAPI,
+  bot: botAPI,
+  
+  // الدوال الفردية
+  activateBot,
+  deactivateBot,
+  getBotStatus,
+  getBotPerformanceMetrics,
+  getBotTradingHistory,
+  getBotTradingAnalytics,
+  getBotSettings,
+  updateBotSettings,
+  resetBotSettings,
+  testBotConnection,
+  getTradingPairs,
+  getTradingStrategies,
+  processPayment,
+  getPaymentHistory,
+  getBalance,
+  withdrawFunds,
+  login,
+  register,
+  logout,
+  refreshToken,
+  getProfile,
+  getMarketData,
+  placeOrder,
+  cancelOrder,
+  getOpenOrders,
+  getOrderHistory,
+  getPortfolioAnalytics,
+  getPerformanceMetrics,
+  getRiskAssessment,
+  getTradingInsights,
+  getUserSettings,
+  updateUserSettings,
+  getNotificationSettings,
+  updateNotificationSettings
+};
+
+// 🛡️ معالج الأخطاء العالمي
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('خطأ غير معالج في API:', event.reason);
+  
+  // يمكن إضافة إخطار للمستخدم هنا
+  if (event.reason.message?.includes('network') || event.reason.message?.includes('Network')) {
+    console.warn('⚠️ مشكلة في الاتصال بالخادم');
+  }
+});

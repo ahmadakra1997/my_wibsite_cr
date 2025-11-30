@@ -35,6 +35,12 @@ const RiskManagement = lazy(() => import('./components/risk/RiskManagement'));
 const Settings = lazy(() => import('./components/settings/Settings'));
 const AuthModal = lazy(() => import('./components/auth/AuthModal'));
 
+// 🆕 المكونات الجديدة للبوت
+const BotActivation = lazy(() => import('./components/bot/BotActivation'));
+const BotStatus = lazy(() => import('./components/bot/BotStatus'));
+const BotPerformance = lazy(() => import('./components/bot/BotPerformance'));
+const BotSettings = lazy(() => import('./components/bot/BotSettings'));
+
 // مدير أداء التطبيق
 const performanceMonitor = new PerformanceMonitor();
 const securityService = new SecurityService();
@@ -142,7 +148,7 @@ function App() {
   // حالة الصيانة (يمكن التحكم فيها عبر البيئة)
   const isMaintenanceMode = process.env.REACT_APP_MAINTENANCE_MODE === 'true';
 
-  // تحميل المكونات المخبأة للاستخدام
+  // 🆕 تحميل المكونات المخبأة للاستخدام مع إضافة المكونات الجديدة
   const memoizedRoutes = useMemo(() => (
     <Routes>
       {/* المسار الافتراضي */}
@@ -179,6 +185,31 @@ function App() {
         </Suspense>
       } />
       
+      {/* 🆕 المسارات الجديدة لإدارة البوت */}
+      <Route path="/bot/activation" element={
+        <Suspense fallback={<LoadingSpinner type="bot" />}>
+          <BotActivation />
+        </Suspense>
+      } />
+      
+      <Route path="/bot/status" element={
+        <Suspense fallback={<LoadingSpinner type="bot" />}>
+          <BotStatus />
+        </Suspense>
+      } />
+
+      <Route path="/bot/performance" element={
+        <Suspense fallback={<LoadingSpinner type="bot" />}>
+          <BotPerformance />
+        </Suspense>
+      } />
+
+      <Route path="/bot/settings" element={
+        <Suspense fallback={<LoadingSpinner type="bot" />}>
+          <BotSettings />
+        </Suspense>
+      } />
+      
       {/* مسار التعامل مع الصفحات غير الموجودة */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
@@ -210,6 +241,18 @@ function App() {
               <main className="app-main-content">
                 {memoizedRoutes}
               </main>
+              
+              {/* 🆕 إضافة المكونات الجديدة للبوت في لوحة التحكم */}
+              <div className="bot-management-section">
+                <Suspense fallback={<LoadingSpinner type="bot" />}>
+                  <div className="bot-components-grid">
+                    <BotActivation />
+                    <BotStatus />
+                    <BotPerformance />
+                    <BotSettings />
+                  </div>
+                </Suspense>
+              </div>
               
               {/* نافذة المصادقة (تظهر عند الحاجة) */}
               <Suspense fallback={<div />}>

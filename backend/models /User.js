@@ -1,11 +1,11 @@
-// backend/models/User.js - النسخة المحدثة مع نظام البوت التلقائي
+// backend/models/User.js - النسخة الكاملة بعد التحديثات
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 
 const userSchema = new mongoose.Schema({
-  // === المعلومات الأساسية والهوية === (محفوظة كما هي)
+  // === المعلومات الأساسية والهوية ===
   personalInfo: {
     userId: {
       type: String,
@@ -90,7 +90,7 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // === نظام الاشتراك والدفع المتقدم === (محفوظة كما هي)
+  // === نظام الاشتراك والدفع المتقدم ===
   subscription: {
     subscriptionId: {
       type: String,
@@ -352,76 +352,735 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // === سجل المعاملات المالية المتقدم === (محفوظة كما هي)
+  // === سجل المعاملات المالية المتقدم ===
   paymentHistory: [{
-    // ... جميع الحقول الحالية محفوظة
     transactionId: {
       type: String,
       required: true,
       unique: true,
       default: () => `TXN_${uuidv4().split('-')[0].toUpperCase()}`
     },
-    // ... باقي الحقول
+    subscriptionId: {
+      type: String,
+      required: true
+    },
+    type: {
+      type: String,
+      enum: ['subscription', 'renewal', 'upgrade', 'refund', 'deposit', 'withdrawal', 'commission'],
+      required: true
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    currency: {
+      type: String,
+      default: 'USD'
+    },
+    method: {
+      type: String,
+      required: true,
+      enum: ['usdt', 'sham_bank', 'crypto', 'credit_card', 'paypal', 'bank_transfer', 'internal']
+    },
+    network: {
+      type: String,
+      default: null,
+      enum: [null, 'ERC20', 'TRC20', 'BEP20', 'SOLANA', 'BITCOIN']
+    },
+    reference: {
+      type: String,
+      default: null
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'completed', 'failed', 'cancelled', 'refunded', 'processing'],
+      default: 'pending',
+      index: true
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      index: true
+    },
+    confirmedAt: {
+      type: Date,
+      default: null
+    },
+    confirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    isTest: {
+      type: Boolean,
+      default: false
+    },
+    metadata: {
+      ip: String,
+      userAgent: String,
+      walletAddress: { type: String, select: false },
+      txHash: { type: String, select: false },
+      confirmations: { type: Number, default: 0 },
+      fee: { type: Number, default: 0 },
+      netAmount: { type: Number, default: 0 },
+      exchangeRate: { type: Number, default: 1 },
+      paymentGateway: String,
+      gatewayTransactionId: String
+    }
   }],
 
-  // === الملف الشخصي والتفضيلات المتقدمة === (محفوظة كما هي)
+  // === الملف الشخصي والتفضيلات المتقدمة ===
   profile: {
-    // ... جميع الحقول الحالية محفوظة
+    avatar: {
+      type: String,
+      default: null,
+      validate: {
+        validator: function(url) {
+          if (!url) return true;
+          return /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/.test(url);
+        },
+        message: 'رابط الصورة غير صالح'
+      }
+    },
+    bio: {
+      type: String,
+      maxlength: [500, 'السيرة الذاتية لا يمكن أن تزيد عن 500 حرف'],
+      trim: true
+    },
+    joinDate: {
+      type: Date,
+      default: Date.now,
+      index: true
+    },
+    lastLogin: {
+      type: Date,
+      default: null
+    },
+    lastActivity: {
+      type: Date,
+      default: Date.now,
+      index: true
+    },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    kycVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    verificationToken: {
+      type: String,
+      select: false
+    },
+    verificationExpires: {
+      type: Date,
+      select: false
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      default: function() {
+        return crypto.randomBytes(6).toString('hex').toUpperCase();
+      }
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    preferences: {
+      theme: {
+        type: String,
+        enum: ['light', 'dark', 'auto'],
+        default: 'dark'
+      },
+      notifications: {
+        email: { type: Boolean, default: true },
+        push: { type: Boolean, default: true },
+        sms: { type: Boolean, default: false },
+        telegram: { type: Boolean, default: false }
+      },
+      tradingView: {
+        chartStyle: { type: String, enum: ['candlestick', 'line', 'area', 'bars'], default: 'candlestick' },
+        timezone: { type: String, default: 'exchange' },
+        soundEnabled: { type: Boolean, default: true }
+      }
+    }
   },
 
-  // === منصات التداول وبيانات API المحسنة === (محفوظة كما هي)
+  // === منصات التداول وبيانات API المحسنة ===
   exchangeAccounts: [{
-    // ... جميع الحقول الحالية محفوظة
+    accountId: {
+      type: String,
+      default: () => `EXC_${uuidv4().split('-')[0].toUpperCase()}`
+    },
+    exchange: {
+      type: String,
+      required: true,
+      enum: ['mexc', 'binance', 'kucoin', 'bybit', 'okx', 'gateio', 'huobi', 'coinbase', 'bitget'],
+      index: true
+    },
+    nickname: {
+      type: String,
+      trim: true,
+      maxlength: 50
+    },
+    apiKey: {
+      type: String,
+      required: true,
+      select: false
+    },
+    secret: {
+      type: String,
+      required: true,
+      select: false
+    },
+    passphrase: {
+      type: String,
+      default: null,
+      select: false
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    lastSync: {
+      type: Date,
+      default: null
+    },
+    balance: {
+      type: Map,
+      of: {
+        total: Number,
+        available: Number,
+        locked: Number,
+        usdValue: Number
+      },
+      default: {}
+    },
+    permissions: [{
+      type: String,
+      enum: ['spot', 'future', 'margin', 'withdraw', 'read', 'trade', 'transfer']
+    }],
+    status: {
+      type: String,
+      enum: ['connected', 'disconnected', 'error', 'verifying', 'limited'],
+      default: 'verifying'
+    },
+    errorLog: [{
+      errorId: { type: String, default: () => uuidv4() },
+      error: String,
+      timestamp: { type: Date, default: Date.now },
+      severity: { type: String, enum: ['low', 'medium', 'high', 'critical'] },
+      resolved: { type: Boolean, default: false }
+    }],
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    },
+    security: {
+      whitelistedIPs: [String],
+      enableWithdrawals: { type: Boolean, default: false },
+      tradeOnly: { type: Boolean, default: true }
+    }
   }],
 
-  // === إعدادات التداول المتقدمة === (محفوظة كما هي)
+  // === إعدادات التداول المتقدمة ===
   tradingSettings: {
-    // ... جميع الحقول الحالية محفوظة
+    riskManagement: {
+      riskLevel: {
+        type: String,
+        enum: ['conservative', 'moderate', 'aggressive', 'custom'],
+        default: 'moderate'
+      },
+      maxDrawdown: {
+        type: Number,
+        default: 10,
+        min: 1,
+        max: 50
+      },
+      dailyLossLimit: {
+        type: Number,
+        default: 5,
+        min: 1,
+        max: 100
+      },
+      positionSizing: {
+        type: String,
+        enum: ['fixed', 'percentage', 'kelly', 'volatility'],
+        default: 'percentage'
+      },
+      maxPositionSize: {
+        type: Number,
+        default: 10,
+        min: 1,
+        max: 100
+      },
+      stopLoss: {
+        enabled: { type: Boolean, default: true },
+        percentage: { type: Number, default: 2, min: 0.1, max: 50 }
+      },
+      takeProfit: {
+        enabled: { type: Boolean, default: true },
+        percentage: { type: Number, default: 5, min: 0.1, max: 100 }
+      },
+      trailingStop: {
+        enabled: { type: Boolean, default: false },
+        percentage: { type: Number, default: 1, min: 0.1, max: 10 }
+      }
+    },
+    strategy: {
+      primary: {
+        type: String,
+        enum: ['scalping', 'day_trading', 'swing', 'position', 'arbitrage', 'market_making'],
+        default: 'day_trading'
+      },
+      timeframes: [{
+        type: String,
+        enum: ['1m', '5m', '15m', '1h', '4h', '1d', '1w']
+      }],
+      indicators: {
+        rsi: { 
+          enabled: { type: Boolean, default: true }, 
+          period: { type: Number, default: 14 },
+          overbought: { type: Number, default: 70 },
+          oversold: { type: Number, default: 30 }
+        },
+        macd: { 
+          enabled: { type: Boolean, default: true },
+          fastPeriod: { type: Number, default: 12 },
+          slowPeriod: { type: Number, default: 26 },
+          signalPeriod: { type: Number, default: 9 }
+        },
+        bollinger: { 
+          enabled: { type: Boolean, default: true },
+          period: { type: Number, default: 20 },
+          deviation: { type: Number, default: 2 }
+        },
+        movingAverage: { 
+          enabled: { type: Boolean, default: true }, 
+          type: { type: String, enum: ['SMA', 'EMA', 'WMA'], default: 'EMA' },
+          period: { type: Number, default: 50 }
+        }
+      },
+      customParameters: {
+        type: Map,
+        of: mongoose.Schema.Types.Mixed,
+        default: {}
+      }
+    },
+    automation: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      tradingHours: {
+        start: { type: String, default: '00:00' },
+        end: { type: String, default: '23:59' },
+        timezone: { type: String, default: 'UTC' }
+      },
+      marketConditions: {
+        highVolatility: { type: Boolean, default: true },
+        lowVolatility: { type: Boolean, default: false },
+        trendingMarket: { type: Boolean, default: true },
+        sidewaysMarket: { type: Boolean, default: false }
+      },
+      autoRestart: {
+        enabled: { type: Boolean, default: true },
+        maxRestarts: { type: Number, default: 3 }
+      }
+    },
+    notifications: {
+      telegram: {
+        enabled: { type: Boolean, default: false },
+        chatId: String,
+        botToken: { type: String, select: false }
+      },
+      email: {
+        enabled: { type: Boolean, default: true },
+        frequency: {
+          type: String,
+          enum: ['realtime', 'hourly', 'daily', 'weekly', 'important_only'],
+          default: 'realtime'
+        }
+      },
+      sms: {
+        enabled: { type: Boolean, default: false },
+        phone: String
+      },
+      webPush: {
+        enabled: { type: Boolean, default: true }
+      },
+      discord: {
+        enabled: { type: Boolean, default: false },
+        webhookUrl: { type: String, select: false }
+      }
+    }
   },
 
-  // === الإحصائيات والأداء المحسن === (محفوظة كما هي)
+  // === الإحصائيات والأداء المحسن ===
   statistics: {
-    // ... جميع الحقول الحالية محفوظة
+    trading: {
+      totalTrades: { type: Number, default: 0, min: 0 },
+      successfulTrades: { type: Number, default: 0, min: 0 },
+      failedTrades: { type: Number, default: 0, min: 0 },
+      totalProfit: { type: Number, default: 0 },
+      totalLoss: { type: Number, default: 0 },
+      netProfit: { type: Number, default: 0 },
+      successRate: { type: Number, default: 0, min: 0, max: 100 },
+      averageProfit: { type: Number, default: 0 },
+      maxDrawdown: { type: Number, default: 0, min: 0, max: 100 },
+      sharpeRatio: { type: Number, default: 0 },
+      profitFactor: { type: Number, default: 0 },
+      recoveryFactor: { type: Number, default: 0 },
+      expectancy: { type: Number, default: 0 },
+      avgTradeDuration: { type: Number, default: 0 } // بالدقائق
+    },
+    account: {
+      totalDeposits: { type: Number, default: 0, min: 0 },
+      totalWithdrawals: { type: Number, default: 0, min: 0 },
+      currentBalance: { type: Number, default: 0 },
+      accountValue: { type: Number, default: 0 },
+      portfolioGrowth: { type: Number, default: 0 },
+      roi: { type: Number, default: 0 }, // عائد الاستثمار
+      sharpeRatio: { type: Number, default: 0 },
+      volatility: { type: Number, default: 0 }
+    },
+    activity: {
+      loginCount: { type: Number, default: 0, min: 0 },
+      tradeFrequency: { type: Number, default: 0, min: 0 },
+      lastTradeDate: { type: Date, default: null },
+      apiUsage: { type: Number, default: 0, min: 0 },
+      sessionDuration: { type: Number, default: 0, min: 0 }, // بالدقائق
+      activeDays: { type: Number, default: 0, min: 0 }
+    },
+    performance: {
+      weekly: {
+        profit: { type: Number, default: 0 },
+        trades: { type: Number, default: 0 },
+        successRate: { type: Number, default: 0 }
+      },
+      monthly: {
+        profit: { type: Number, default: 0 },
+        trades: { type: Number, default: 0 },
+        successRate: { type: Number, default: 0 }
+      },
+      yearly: {
+        profit: { type: Number, default: 0 },
+        trades: { type: Number, default: 0 },
+        successRate: { type: Number, default: 0 }
+      }
+    }
   },
 
-  // === سجل التداول المحسن === (محفوظة كما هي)
+  // === سجل التداول المحسن ===
   tradeHistory: [{
-    // ... جميع الحقول الحالية محفوظة
+    tradeId: {
+      type: String,
+      required: true,
+      unique: true,
+      default: () => `TRADE_${uuidv4().split('-')[0].toUpperCase()}`
+    },
+    exchange: {
+      type: String,
+      required: true,
+      index: true
+    },
+    symbol: {
+      type: String,
+      required: true,
+      index: true
+    },
+    side: {
+      type: String,
+      enum: ['buy', 'sell'],
+      required: true,
+      index: true
+    },
+    type: {
+      type: String,
+      enum: ['market', 'limit', 'stop', 'stop_limit', 'trailing_stop'],
+      required: true
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    price: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    total: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    fee: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    status: {
+      type: String,
+      enum: ['open', 'filled', 'partial', 'cancelled', 'rejected', 'expired'],
+      required: true,
+      index: true
+    },
+    profitLoss: {
+      type: Number,
+      default: 0
+    },
+    profitLossPercentage: {
+      type: Number,
+      default: 0
+    },
+    strategy: {
+      type: String,
+      default: 'manual'
+    },
+    timeframe: String,
+    notes: String,
+    openedAt: {
+      type: Date,
+      default: Date.now,
+      index: true
+    },
+    closedAt: {
+      type: Date,
+      default: null
+    },
+    duration: {
+      type: Number,
+      default: 0
+    },
+    metadata: {
+      exchangeOrderId: String,
+      clientOrderId: String,
+      executionType: String,
+      leverage: { type: Number, default: 1 },
+      margin: { type: Number, default: 0 },
+      commission: { type: Number, default: 0 },
+      slippage: { type: Number, default: 0 },
+      fillPrice: Number,
+      averagePrice: Number,
+      executedQty: Number,
+      icebergQty: Number,
+      timeInForce: String
+    },
+    analysis: {
+      entryReason: String,
+      exitReason: String,
+      emotions: [String],
+      lessons: String,
+      rating: { type: Number, min: 1, max: 5 }
+    }
   }],
 
-  // === الأمان والمراقبة المحسنة === (محفوظة كما هي)
+  // === الأمان والمراقبة المحسنة ===
   security: {
-    // ... جميع الحقول الحالية محفوظة
+    loginAttempts: {
+      type: Number,
+      default: 0,
+      select: false
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
+      select: false
+    },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false
+    },
+    twoFactorSecret: {
+      type: String,
+      select: false
+    },
+    twoFactorBackupCodes: [{
+      code: { type: String, select: false },
+      used: { type: Boolean, default: false },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    lastPasswordChange: {
+      type: Date,
+      default: Date.now
+    },
+    passwordHistory: [{
+      password: { type: String, select: false },
+      changedAt: { type: Date, default: Date.now }
+    }],
+    suspiciousActivities: [{
+      activityId: { type: String, default: () => uuidv4() },
+      activity: String,
+      severity: {
+        type: String,
+        enum: ['low', 'medium', 'high', 'critical']
+      },
+      ip: String,
+      userAgent: String,
+      location: String,
+      timestamp: { type: Date, default: Date.now },
+      resolved: { type: Boolean, default: false }
+    }],
+    sessionTokens: [{
+      token: { type: String, select: false },
+      expiresAt: Date,
+      device: String,
+      ip: String,
+      userAgent: String,
+      lastUsed: { type: Date, default: Date.now },
+      isActive: { type: Boolean, default: true }
+    }],
+    apiKeys: [{
+      keyId: { type: String, default: () => uuidv4() },
+      name: String,
+      key: { type: String, select: false },
+      secret: { type: String, select: false },
+      permissions: [String],
+      lastUsed: Date,
+      expiresAt: Date,
+      isActive: { type: Boolean, default: true }
+    }],
+    securityQuestions: [{
+      question: String,
+      answer: { type: String, select: false }
+    }]
   },
 
-  // === نظام الإحالة المحسن === (محفوظة كما هي)
+  // === نظام الإحالة المحسن ===
   referral: {
-    // ... جميع الحقول الحالية محفوظة
+    totalReferrals: { type: Number, default: 0, min: 0 },
+    activeReferrals: { type: Number, default: 0, min: 0 },
+    referralEarnings: { type: Number, default: 0, min: 0 },
+    commissionRate: { type: Number, default: 10, min: 0, max: 50 }, // نسبة العمولة
+    referredUsers: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      joinedAt: { type: Date, default: Date.now },
+      commissionEarned: { type: Number, default: 0, min: 0 },
+      status: { type: String, enum: ['active', 'inactive', 'pending'], default: 'pending' }
+    }],
+    payoutHistory: [{
+      payoutId: { type: String, default: () => uuidv4() },
+      amount: Number,
+      date: { type: Date, default: Date.now },
+      method: String,
+      status: { type: String, enum: ['pending', 'paid', 'failed'] }
+    }]
   },
 
-  // === الإعدادات الإدارية المتقدمة === (محفوظة كما هي)
+  // === الإعدادات الإدارية المتقدمة ===
   admin: {
-    // ... جميع الحقول الحالية محفوظة
+    role: {
+      type: String,
+      enum: ['user', 'moderator', 'admin', 'super_admin'],
+      default: 'user',
+      index: true
+    },
+    permissions: [{
+      type: String,
+      enum: [
+        'user_management', 'content_management', 'financial_management', 
+        'system_monitoring', 'security_management', 'support_management',
+        'trading_management', 'reporting', 'settings_management'
+      ]
+    }],
+    lastAdminAction: Date,
+    actionLog: [{
+      action: String,
+      target: mongoose.Schema.Types.Mixed,
+      timestamp: { type: Date, default: Date.now },
+      ip: String,
+      userAgent: String
+    }],
+    notes: String,
+    accessLevel: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 10
+    }
   },
 
-  // === التحليلات والتتبع === (محفوظة كما هي)
+  // === التحليلات والتتبع ===
   analytics: {
-    // ... جميع الحقول الحالية محفوظة
+    acquisition: {
+      source: String,
+      campaign: String,
+      medium: String,
+      initialReferrer: String
+    },
+    behavior: {
+      favoritePairs: [String],
+      tradingHours: [Number], // ساعات النشاط
+      deviceUsage: {
+        desktop: { type: Number, default: 0 },
+        mobile: { type: Number, default: 0 },
+        tablet: { type: Number, default: 0 }
+      },
+      featureUsage: {
+        dashboard: { type: Number, default: 0 },
+        trading: { type: Number, default: 0 },
+        analytics: { type: Number, default: 0 },
+        settings: { type: Number, default: 0 }
+      }
+    },
+    engagement: {
+      lastActive: Date,
+      sessionCount: { type: Number, default: 0 },
+      averageSession: { type: Number, default: 0 }, // بالدقائق
+      retentionRate: { type: Number, default: 0 }
+    }
   },
 
-  // === النسخ الاحتياطي والإعدادات === (محفوظة كما هي)
+  // === النسخ الاحتياطي والإعدادات ===
   backup: {
-    // ... جميع الحقول الحالية محفوظة
+    lastBackup: Date,
+    backupFrequency: { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'weekly' },
+    autoBackup: { type: Boolean, default: true },
+    encrypted: { type: Boolean, default: true }
   },
 
-  // === العلامات والتصنيفات === (محفوظة كما هي)
+  // === العلامات والتصنيفات ===
   tags: [{
-    // ... جميع الحقول الحالية محفوظة
+    type: String,
+    enum: [
+      'vip', 'new_user', 'active_trader', 'inactive', 'high_volume',
+      'risk_taker', 'conservative', 'technical', 'fundamental',
+      'day_trader', 'swing_trader', 'investor', 'arbitrageur'
+    ],
+    index: true
   }],
 
-  // === الحالة النظامية === (محفوظة كما هي)
+  // === الحالة النظامية ===
   systemStatus: {
-    // ... جميع الحقول الحالية محفوظة
+    isActive: { type: Boolean, default: true, index: true },
+    isSuspended: { type: Boolean, default: false },
+    suspensionReason: String,
+    suspensionEnd: Date,
+    lastHealthCheck: Date,
+    systemNotes: String
   }
 
 }, {
@@ -447,6 +1106,20 @@ const userSchema = new mongoose.Schema({
     virtuals: true
   }
 });
+
+// === الفهرسات المتقدمة للأداء ===
+userSchema.index({ 'personalInfo.email': 1 }, { collation: { locale: 'en', strength: 2 } });
+userSchema.index({ 'subscription.status': 1, 'subscription.endDate': 1 });
+userSchema.index({ 'profile.joinDate': -1, 'statistics.trading.netProfit': -1 });
+userSchema.index({ 'profile.referralCode': 1 }, { sparse: true });
+userSchema.index({ 'personalInfo.phone': 1 }, { sparse: true });
+userSchema.index({ 'statistics.trading.netProfit': -1 });
+userSchema.index({ 'admin.role': 1, 'profile.lastActivity': -1 });
+userSchema.index({ 'systemStatus.isActive': 1, 'subscription.status': 1 });
+userSchema.index({ 'tags': 1 });
+userSchema.index({ 'analytics.behavior.favoritePairs': 1 });
+userSchema.index({ 'tradeHistory.openedAt': -1, 'tradeHistory.symbol': 1 });
+userSchema.index({ 'security.suspiciousActivities.timestamp': -1 });
 
 // === إضافة الفهرسات الجديدة ===
 userSchema.index({ 'tradingBots.activeBot.status': 1 });

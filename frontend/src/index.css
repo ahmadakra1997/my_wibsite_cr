@@ -1,3 +1,9 @@
+/* أضف هذا في بداية الملف */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* احتفظ بالمحتوى الحالي */
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -10,4 +16,55 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* أضف الأنماط المخصصة من index.html */
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-quantum-pulse {
+  animation: quantum-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+.animate-shimmer {
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+
+.quantum-card {
+  background: linear-gradient(135deg, rgba(10, 31, 58, 0.9) 0%, rgba(30, 58, 138, 0.7) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 16px;
+}
+
+.neon-border {
+  border: 1px solid #00D4FF;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5),
+              inset 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+/* تعريف الحركات المذكورة في index.html */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes quantum-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes glow {
+  0% { box-shadow: 0 0 20px rgba(0, 212, 255, 0.3); }
+  100% { boxShadow: 0 0 30px rgba(0, 212, 255, 0.6); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -500px 0; }
+  100% { background-position: 500px 0; }
 }
